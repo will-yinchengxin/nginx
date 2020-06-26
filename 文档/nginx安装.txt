@@ -1,0 +1,109 @@
+# 1.nginx的安装
+(这里要先安装拓展　yum -y install pcre pcre-devel zlib zlib-devel openssl openssl-devel)
+0. wget http://nginx.org/download/nginx-1.9.9.tar.gz
+1. tar -zxvf  nginx-1.9.9.tar.gz
+2. cd nginx-1.9.9
+3. ./configure --prefix=/usr/local/nginx/  #编译
+4. make && make install              # 编译安装
+5. /usr/local/nginx/sbin/nginx       # 开启  netstat -ntlp 查看端口
+6. 配置环境变量
+/usr/local/nginx/sbin/nginx -s stop
+vim /etc/profile
+加入:
+export NGINX_HOME=/usr/local/nginx
+export PATH=$PATH:$NGINX_HOME/sbin
+刷新资源目录
+source /etc/profile
+命令
+nginx -v
+nginx 开启
+nginx -s reload
+nginx -s stop
+
+
+# 2.关于php-fpm的安装
+https://www.cnblogs.com/danhuang/p/12912973.html
+
+# 3.配置文件
+worker_processes  1;
+
+events {
+    worker_connections  1024;
+}
+
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+
+    sendfile        on;
+
+    keepalive_timeout  65;
+
+    server {
+        listen       80;
+        server_name  localhost;
+        root              /php;
+
+
+        location / {
+         #   root   html;
+            index index.php index.html index.htm;
+        }
+
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   html;
+        }
+
+         location ~ \.php$ {
+
+                fastcgi_pass unix:/tmp/php-cgi-73.sock;
+
+                fastcgi_index index.php;
+
+                fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+
+                include fastcgi_params;
+        }
+    }
+}
+
+
+# 4.php-fpm 与 nginx 连接问题
+    nginx与php-fpm通信的两种方式： tcp socket 和 unix socket。
+    unix socket 是一种终端，可以使同一台操作系统上的两个或多个进程进行数据通信。这种方式需要再nginx配置文件中填写php-fpm的pid文件位
+    置，效率要比tcp socket高。
+    tcp socket的优点是可以跨服务器，当nginx和php-fpm不在同一台机器上时，只能使用这种方式。
+    帮助文档 : https://blog.csdn.net/koastal/article/details/52303316
+
+
+    netstat -an未发现监听9000端口。查看/var/log/php5-fpm.log一切正常。
+    随后查看 /www/server/php/73/etc/php-fpm.conf
+    发现listen = /tmp/php-cgi-73.sock
+
+    默认安装php5-fpm无监听9000端口，nginx无法链接php5-fpm修正
+
+    修改nginx下的sites配置
+            location ~ \.php$ {
+                    fastcgi_pass 127.0.0.1:9000;
+                    fastcgi_index index.php;
+                    fastcgi_param APPLICATION_ENV production;
+                    include fastcgi_params;
+            }
+    为
+            location ~ \.php$ {
+                    fastcgi_pass unix:/var/run/php5-fpm.sock;
+                    fastcgi_index index.php;
+                    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                    include fastcgi_params;
+
+            }
+    重启php5-fpm与nginx后，恢复。
+
+
+
+# 5.同步时间
+1.yum install ntpdate       #下载工具
+2.ntpdate ntp1.aliyun.com   #同步阿里云时间
+3.date -R                   #查看时间

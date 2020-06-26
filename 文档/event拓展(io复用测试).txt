@@ -1,0 +1,153 @@
+#### event拓展安装
+>我是源码安装的,这里用phpize来安装扩展
+
+>准备libevent-2.1.8-stable.tar.gz和event-2.3.0.tgz
+
+- 链接：https://pan.baidu.com/s/1wd4k3ZMCKIrj4jgResLApA  提取码：kzmb
+- 链接：https://pan.baidu.com/s/1yD8Kz5BQnaLFj-TkYFt9aQ  提取码：it70
+- 解压libevent(这是centos7需要的环境依赖) tar -zxvf libevent-2.1.8-stable.tar.gz
+- 进入libevent-2.1.8-stable
+- ./configure --prefix=/usr/local/libevent
+- make && make install
+- 安装event 解压tar -zxvf event-2.3.0.tgz
+- 执行 /usr/local/php/bin/phpize
+- ./configure --with-php-config=/usr/local/php/bin/php-config --with-event-libevent-dir=/usr/local/libevent
+- make && make install
+- 修改php.ini配置文件
+- 使用命令/usr/local/php/bin/php --ini查看配置文件位置
+- vim /usr/local/php/etc/php.ini
+- extension=event.so(echo "extension=event.so" >> /usr/local/php/etc/php.ini)
+- php -m |grep event,查看拓展
+- 加入环境变量中
+> vim /etc/profile
+>
+> 加入:export PATH=$PATH:/usr/local/nginx/sbin
+>
+> source /etc/profile
+>
+> 启动命令 nginx
+>
+> 关闭 nginx -s stop
+>
+> 重启 nginx -s reload
+
+````
+多进程异步io服务器源码实现(需要借助pcntl event模块拓展)
+
+<?php
+class Server{
+    private  $_mainSocket;
+    private  $_newSocket;
+    private  $_EventBase;
+    public   $pids;
+    public  function  __construct()
+    {
+        //从配置文件
+        $this->forkServer(); //创建服务监听
+        file_put_contents('/tmp/master.pid',getmypid());  //
+    }
+
+    public function signalHandler($signo){
+        switch ($signo) {
+            case SIGTERM:
+                echo 'kill';
+                exit;
+                break;
+            case SIGHUP:
+                //处理SIGHUP信号
+                break;
+            case SIGINT:
+                //处理ctrl+c
+                echo 'ctrl+c';
+                exit;
+                break;
+            default:
+                // 处理所有其他信号
+        }
+    }
+   protected function  monitor(){
+            //SIGINT ctrl+c
+          //注册信号处理器，信号信号触发时，执行的闭包（进程关闭之后，回收主进程的pid文件）
+          pcntl_signal(SIGINT,[$this,'signalHandler']);
+          pcntl_signal(SIGTERM,[$this,'signalHandler']);
+
+          while (1){
+              pcntl_signal_dispatch(); //调用等待信号的处理器，触发信号事件，挂起状态
+              $pid=pcntl_wait($status,WUNTRACED); //等待子进程中断，防止子进程成为僵尸进程。
+              $status=0;
+         }
+
+    }
+
+
+    public  function  forkServer($count=2){
+        for ($i = 0; $i < $count; ++$i)
+        {
+            $pid = pcntl_fork();
+            if ($pid < 0) {
+                exit('生成子进程失败\n');
+            } else if ($pid > 0) {
+                // 父进程
+                $this->pids[] = $pid;
+            } else {
+                $this->listen();
+                exit;
+            }
+        }
+        $this->monitor(); //监视
+
+    }
+
+    public  function  listen (){
+        $tcp    = "0.0.0.0:9005";
+
+        // 创建资源流上下文
+        $context = stream_context_create([
+            'socket' => [
+                'backlog' => 102400
+            ]
+        ]);
+        //监听客户端链接 + 设置端口重用
+        stream_context_set_option($context , 'socket' , 'so_reuseport' , 1);
+        stream_context_set_option($context,'socket','so_reuseaddr',1); //设置连接重用
+
+        $this->_mainSocket = stream_socket_server($tcp , $errno , $errstr , STREAM_SERVER_BIND | STREAM_SERVER_LISTEN , $context);
+        stream_set_blocking($this->_mainSocket , false);
+
+        $this->_EventBase = new \EventBase();
+        $event=new \Event( $this->_EventBase,$this->_mainSocket,Event::READ | Event::PERSIST,function (){
+            $this->_newSocket = stream_socket_accept($this->_mainSocket);
+            //非阻塞,
+            stream_set_blocking($this->_newSocket , false);
+
+            //触发客户端事件,进行事件的监听,监听连接状态(READ/PERSIST),互补干扰
+            $event=new \Event( $this->_EventBase , $this->_newSocket , Event::READ | Event::PERSIST  ,function($socket)use(&$event){
+                $msg = fread($socket , 65535);
+                // Check connection closed.检查连接是否关闭
+                if ($msg === '') {
+
+                    if ((feof($socket) || !is_resource($socket))) {
+                        $event->del(); //删除事件
+                        return null;
+                    }
+                }else{
+                    $content = '<p>我是需要访问的内容</p>';
+                    $header = "HTTP/1.1 200 OK\r\n";
+                    $header .= "Content-Type: text/html;charset=utf-8\r\n";
+                    $header .= "Connection: keep-alive\r\n";
+                    $header .= "Content-Length: " . strlen($content) . "\r\n\r\n";
+                    fwrite($socket,$header . $content);
+                }
+            },$this->_newSocket);
+            $event->add(); //挂起事件
+        });
+        $event->add();
+        $this->_EventBase->loop();
+
+    }
+
+}
+
+$server=new Server();
+
+````

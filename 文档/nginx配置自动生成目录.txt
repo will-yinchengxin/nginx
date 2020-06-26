@@ -1,0 +1,15 @@
+nginx 配置
+ location / {
+            #index index.php index.html error/index.html;
+	        autoindex on;
+        }
+
+apache 配置:
+  <Directory "D:/phpstudy/phpstudy_pro/WWW">
+     Options +Indexes +FollowSymLinks +ExecCGI  //这里修改
+      AllowOverride All
+      Order allow,deny
+      Allow from all
+      Require all granted
+	  DirectoryIndex index.php index.html error/index.html
+  </Directory>
