@@ -182,6 +182,47 @@ success
 
 [root@99 unix]# firewall-cmd --zone=public --remove-port=80/tcp --permanent // 永久关闭 80 端口
 success
+
+// ---------------------------------------- 利用docker配置golang服务的负载均衡 ----------------------------------------------
+# goland
+upstream golang {
+    #ip_hash;
+    server 172.16.252.99:8050 weight=3;
+    server 172.16.252.99:8060 weight=3;
+ }
+server {
+    listen       80;
+    server_name  localhost;
+
+    location / {
+        root   html;
+        proxy_pass   http://golang;  // 配置负载均衡的位置
+        index  index.html index.htm;
+    }
+
+    error_page   500 502 503 504  /50x.html;
+    location = /50x.html {
+        root   html;
+    }
+}
+//---------------------------------------- docker容器开启端口映射后，会自动在防火墙上打开端口的问题 ----------------------------------------------
+方式一(临时修改)：
+    ··················································
+    [root@99 ~]# iptables --list
+    // .........省略
+    Chain DOCKER (1 references)
+    target     prot opt source               destination
+    ACCEPT     tcp  --  anywhere             172.17.0.2           tcp dpt:8050
+    ACCEPT     tcp  --  anywhere             172.17.0.3           tcp dpt:8060
+    // .........省略
+    ··································································
+    
+    #删除DOCKER链中的1号规则；如果待删除规则不位于第一行，则将数字改为对应行号
+    [root@99 ~]# iptables -D DOCKER 1
+    
+    #此容器只接受来自地址 172.16.252.99（主机ip） 的连接请求
+    [root@99 ~]# iptables -A DOCKER -s 172.16.252.99 -d 172.17.0.2 -p tcp --sport 8050 -j ACCEPT
+    [root@99 ~]# iptables -A DOCKER -s 172.16.252.99 -d 172.17.0.2 -p tcp --sport 8060 -j ACCEPT
 ````
 ### 3.2 配置文件详解
 ````
