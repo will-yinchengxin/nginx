@@ -95,8 +95,94 @@ web服务器和客户端是一对多的关系，Web服务器必须有能力同�
 - [nginx下载地址](http://nginx.org/en/download.html)
 
 ### 3.1 安装
+#### 3.1.1 centos7 + nginx(1.9.9) + php
 ![](./pic/2020-06-12_213250.jpg)
 
+#### 3.1.2 centos8 + nginx(1.9.9) + go
+````
+wget http://nginx.org/download/nginx-1.9.9.tar.gz
+
+tar -zxvf nginx-1.9.9.tar.gz
+
+cd nginx-1.9.9
+
+yum -y install gcc gcc-c++ pcre pcre-devel zlib zlib-devel openssl openssl-devel. // 安装依赖
+
+// 配置nginx
+./configure \
+--prefix=/usr/local/nginx \
+--with-http_ssl_module \
+--conf-path=/usr/local/nginx/conf/nginx.conf \
+--pid-path=/usr/local/nginx/conf/nginx.pid \
+--lock-path=/var/lock/nginx.lock \
+--error-log-path=/var/logs/nginx/error.log \
+--http-log-path=/var/logs/nginx/access.log \
+--with-http_gzip_static_module \
+--http-client-body-temp-path=/var/temp/nginx/client \
+--http-proxy-temp-path=/var/temp/nginx/proxy \
+--http-fastcgi-temp-path=/var/temp/nginx/fastcgi \
+--http-uwsgi-temp-path=/var/temp/nginx/uwsgi \
+--http-scgi-temp-path=/var/temp/nginx/scgi
+
+
+// 修改 /root/nginx-1.9.9/objs/Makefile
+[root@99 objs]# pwd
+/root/nginx-1.9.9/objs
+[root@99 objs]# ls
+Makefile  autoconf.err  nginx  nginx.8  ngx_auto_config.h  ngx_auto_headers.h  ngx_modules.c  ngx_modules.o  src
+// --------------------------------------- 原来为 ---------------------------------------
+CC =    cc
+CFLAGS =  -pipe  -O -W -Wall -Wpointer-arith -Wno-unused -Werror -g  // 删除 -Werror -g
+CPP =   cc -E
+LINK =  $(CC)
+// --------------------------------------- 修改为 ---------------------------------------
+CC =    cc
+CFLAGS =  -pipe  -O -W -Wall -Wpointer-arith -Wno-unused -Wno-implicit-fallthrough // 新增 -Wno-implicit-fallthrough
+CPP =   cc -E
+LINK =  $(CC)
+
+
+// 修改 /root/nginx-1.9.9/src/os/unix
+// --------------------------------------- 修改为 ---------------------------------------
+#ifdef __GLIBC__
+    /* work around the glibc bug */
+   /* cd.current_salt[0] = ~salt[0];*/.   // 注释掉这一行
+#endif
+
+
+make && make install           ＃ 编译安装
+
+/usr /local/nginx/sbin/nginx   #开启 netstat -ntlp 查看端口
+
+vim /etc/profile  # 加入一下内容
+export NGINX HOME=/usr/local/nginx
+export PATH=$PATH:$NGINX HOME/ sbin
+
+source /etc/profile # 刷新资源目录
+
+命令:
+nginx -V
+nginx            # 开启
+nginx -s reload  # 重启
+nginx -S stop。  # 关闭
+
+
+//---------------------------------------- 防火墙部分 ----------------------------------------------
+ 检查80端口是否开放：
+[root@99 unix]# firewall-cmd --zone=public --list-ports // 展示所有开放端口, 如果没有 80/tcp 执行以下命令，开放端口: 
+
+[root@99 unix]# firewall-cmd --zone=public --add-port=80/tcp --permanent // 永久开放80端口
+success 
+
+[root@99 unix]# firewall-cmd --reload  // 更新防火墙规则
+success 
+
+[root@99 unix]# firewall-cmd --zone=public --list-ports // 展示所有开放端口
+80/tcp
+
+[root@99 unix]# firewall-cmd --zone=public --remove-port=80/tcp --permanent // 永久关闭 80 端口
+success
+````
 ### 3.2 配置文件详解
 ````
 main （全局设置）: main 部分设置的指令将影响其它所有部分的设置；
